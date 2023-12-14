@@ -3,31 +3,53 @@ import { assert } from "console";
 import tmi from "tmi.js";
 import * as fs from "fs";
 
+const NO_GAME = "OFFLINE";
+
 // TODO migrate to smth cleaner
-const client_id = process.env.TWITCH_CLIENT_ID;
-const client_secret = process.env.TWITCH_CLIENT_SECRET;
-const STREAMER = process.env.STREAMER?.toLowerCase() || "coolseel";
-const SAVE_CHAT_LOG_INTERVAL = parseInt(process.env.SAVE_CHAT_LOG_INTERVAL || (1000 * 60 * 60).toString(), 10);
 
 interface Message {
     username: string;
-    message: string;
-    timestamp: Date;
-    currentGame?: string;
+    text: string;
+    secondsSinceStart: number;
+}
+
+interface StreamSegment {
+    start: Date,
+    game: string,
+    messages: Message[],
+}
+
+interface Stream {
+    start: Date,
+    segments: StreamSegment[],
+    live: boolean,
 }
 
 export class Twitch {
+    client_id: string;
+    client_secret: string;
+    streamer: string;
+
     appToken: string;
-    expiresAt: Date;
-    tmiClient: tmi.Client = new tmi.Client({channels: [STREAMER]});
-    currentGame: string = "NONE";
-    messages: Message[] = [];
+    tmiClient!: tmi.Client;
+    currentStream: Stream = {
+        start: new Date(),
+        segments: [],
+        live: false,
+    };
+    currentSegment: StreamSegment = {
+        start: new Date(),
+        game: NO_GAME,
+        messages: [],
+    };
     refreshGameInterval: NodeJS.Timeout | null = null;
-    saveChatLogInterval: NodeJS.Timeout | null = null;
 
     constructor() {
+        this.client_id = process.env.TWITCH_CLIENT_ID!;
+        this.client_secret = process.env.TWITCH_CLIENT_SECRET!;
+        this.streamer = process.env.STREAMER?.toLowerCase() || "coolseel";
+        
         this.appToken = "";
-        this.expiresAt = new Date();
         this.handleMessage = this.handleMessage.bind(this);
 
         this.refreshToken().then(() => {
@@ -35,30 +57,35 @@ export class Twitch {
             // Refresh game every 10 seconds.
             this.refreshGameInterval = setInterval(() => this.refreshGame(), 10000);
             this.setUpTMI();
+            console.log("Initialized successfully");
         });
-        // Save chat log every 1 hour.
-        this.saveChatLogInterval = setInterval(() => this.saveChatLog(), SAVE_CHAT_LOG_INTERVAL);
     }
 
-    private async refreshToken() {
+    destroy() {
+        if (this.refreshGameInterval) {
+            clearInterval(this.refreshGameInterval);
+            this.refreshGameInterval = null;
+        }
+    }
+
+    async refreshToken() {
         const response = await axios.post(
             "https://id.twitch.tv/oauth2/token",
             null,
             {
                 params: {
-                    client_id,
-                    client_secret,
+                    client_id: this.client_id,
+                    client_secret: this.client_secret,
                     grant_type: "client_credentials",
                 },
             },
         );
         this.appToken = response.data.access_token;
-        this.expiresAt = new Date(Date.now() + response.data.expires_in * 1000);
     }
 
     private async setUpTMI() {
         const tmiClient = new tmi.Client({
-            channels: [STREAMER],
+            channels: [this.streamer],
         });
 
         tmiClient.on("message", this.handleMessage)
@@ -66,25 +93,24 @@ export class Twitch {
         this.tmiClient = tmiClient;
     }
 
-    private async handleMessage(channel: string, tags: tmi.ChatUserstate, message: string, self: boolean) {
-        assert(channel === `#${STREAMER}`); // Running for only a single streamer now, so channel is always the same
+    async handleMessage(channel: string, tags: tmi.ChatUserstate, text: string, self: boolean) {
+        assert(channel === `#${this.streamer}`); // Running for only a single streamer now, so channel is always the same
         assert(!self); // We don't want the bot to ever send a message
+        const date = new Date();
         const msg: Message = {
-            username: tags.username!,
-            message,
-            timestamp: new Date(),
-            currentGame: this.currentGame,
+            username: tags.username || "[UNKNOWN]",
+            text,
+            secondsSinceStart: (date.getTime() - this.currentSegment.start.getTime()) / 1000,
         };
-        this.messages.push(msg);
+        this.currentSegment.messages.push(msg);
         console.log(msg);
-
     }
 
     private async get(url: string, params: any) {
         return axios.get(url, {
             params,
             headers: {
-                "Client-ID": client_id,
+                "Client-ID": this.client_id,
                 "Authorization": `Bearer ${this.appToken}`,
             },
         });
@@ -99,15 +125,13 @@ export class Twitch {
         return response;
     }
 
-
-    private async refreshGame() {
+    async getCurrentGame() {
         const response = await this.reauthGet(
             "https://api.twitch.tv/helix/streams",
-            { user_login: STREAMER },
+            { user_login: this.streamer },
         )
         if (response.data.data.length === 0) {
-            this.currentGame = "NONE";
-            return;
+            return NO_GAME;
         }
         const stream = response.data.data[0];
         const game_id = stream.game_id;
@@ -115,25 +139,48 @@ export class Twitch {
             "https://api.twitch.tv/helix/games",
             { id: game_id },
         )
-        const newGame = response2.data.data[0].name;
-        if (this.currentGame !== newGame) {
-            console.log(`Game changed from ${this.currentGame} to ${newGame}`);
-            this.currentGame = response2.data.data[0].name;
+        return response2.data.data[0].name;
+    }
+
+
+    async refreshGame() {
+        const newGame = await this.getCurrentGame();
+        const currentGame = this.currentSegment.game;
+        if (currentGame === newGame) {
+            return;
+        }
+        console.log(`Game changed from ${currentGame} to ${newGame}`);
+        this.currentStream.segments.push(this.currentSegment);
+        this.currentSegment = {
+            start: new Date(),
+            game: newGame,
+            messages: [],
+        };
+        if (currentGame === NO_GAME || newGame === NO_GAME) {
+            // Stream just started or ended
+            await this.saveChatLog();
+            this.currentStream = {
+                start: new Date(),
+                segments: [],
+                live: newGame === NO_GAME ? false : true,
+            };
+            return;
         }
     }
 
     private async saveChatLog() {
-        if (this.messages.length === 0) {
+        // Don't save zero-message off-streams
+        if (!this.currentStream.live && this.currentStream.segments[0].messages.length === 0) {
             return;
         }
-        // Save the chat log to a file under ./data/${STREAMER}/${timesamp}.json
         const timestamp = new Date().toISOString();
-        // How to handle race conditions?
-        const data = JSON.stringify(this.messages, null, 2);
-        this.messages = [];
-        if (!fs.existsSync(`./data/${STREAMER}`)) {
-            fs.mkdirSync(`./data/${STREAMER}`, { recursive: true });
+        // NOTE: How to handle race conditions?
+        const data = JSON.stringify(this.currentStream, null, 2);
+        const name = this.currentStream.live ? "live" : "off";
+        this.currentSegment.messages = [];
+        if (!fs.existsSync(`./data/${this.streamer}`)) {
+            fs.mkdirSync(`./data/${this.streamer}`, { recursive: true });
         }
-        fs.writeFileSync(`./data/${STREAMER}/${timestamp}.json`, data);
+        fs.writeFileSync(`./data/${this.streamer}/${timestamp}_${name}.json`, data);
     }
 }

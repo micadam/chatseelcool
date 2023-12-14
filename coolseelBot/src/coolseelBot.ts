@@ -1,3 +1,3 @@
-import { Twitch } from "./twitch.js"
+import { Twitch } from "./twitch"
 
 const twitch = new Twitch();
