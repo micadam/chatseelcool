@@ -14,7 +14,8 @@ RUN npm install --omit=dev
 COPY ./dist ./dist
 
 # Set the entrypoint command to run the ts-node-esm executable
-CMD node ./dist/coolseelBot.js
+ENTRYPOINT ["node", "./dist/src/coolseelBot.js"]
+
 
 # to test the docker image locally and set the env STREAMER to GORGC
 # docker build -t coolseelbot .

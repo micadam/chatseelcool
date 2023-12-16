@@ -5,7 +5,7 @@ set -euo pipefail
 npm run build
 
 # build the image for amd64 and arm64
-for platform in amd64 arm64; do
+for platform in arm64; do
     docker build -t coolseel-bot:$platform --platform linux/$platform .
 done
 
