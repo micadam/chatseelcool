@@ -1,73 +1,39 @@
 import axios from "axios";
 import { assert } from "console";
 import tmi from "tmi.js";
-import * as fs from "fs";
+import {
+  Message,
+  PrismaClient,
+  Segment,
+  Stream,
+  Streamer,
+} from "@prisma/client";
 
+const prisma = new PrismaClient();
 const NO_GAME = "OFFLINE";
 
 // TODO migrate to smth cleaner
 
-interface Message {
-  username: string;
-  text: string;
-  secondsSinceStart: number;
-}
-
-interface StreamSegment {
-  start: Date;
-  game: string;
-  messages: Message[];
-}
-
-interface Stream {
-  start: Date;
-  segments: StreamSegment[];
-  live: boolean;
-}
-
-interface LiveStream extends Stream {
-  id: string;
-  live: true;
-}
-
-interface OffStream extends Stream {
-  live: false;
-}
-
-type StreamType = LiveStream | OffStream;
-
 export class Twitch {
   client_id: string;
   client_secret: string;
-  streamer: string;
 
   appToken: string;
   tmiClient!: tmi.Client;
-  currentStream: StreamType = {
-    start: new Date(),
-    segments: [],
-    live: false,
-  };
-  currentSegment: StreamSegment = {
-    start: new Date(),
-    game: NO_GAME,
-    messages: [],
-  };
+  streamer!: Streamer;
+  currentStream!: Stream;
+  currentSegment!: Segment;
   refreshGameInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.client_id = process.env.TWITCH_CLIENT_ID!;
     this.client_secret = process.env.TWITCH_CLIENT_SECRET!;
-    this.streamer = process.env.STREAMER?.toLowerCase() || "coolseel";
 
     this.appToken = "";
     this.handleMessage = this.handleMessage.bind(this);
 
-    this.refreshToken().then(() => {
-      this.refreshGame();
+    this.setUp().then(() => {
       // Refresh game every 10 seconds.
-      this.refreshGameInterval = setInterval(() => this.refreshGame(), 10000);
-      this.setUpTMI();
       console.log("Initialized successfully");
       const handleSignal = () => {
         console.log("Shutting down...");
@@ -79,9 +45,22 @@ export class Twitch {
     });
   }
 
+  async setUp() {
+    await this.refreshToken();
+    const streamer = process.env.STREAMER?.toLowerCase() || "coolseel";
+    this.streamer = await prisma.streamer.upsert({
+      where: { name: streamer },
+      create: { name: streamer },
+      update: {},
+    });
+    await this.refreshGame();
+    await this.setUpTMI();
+    this.refreshGameInterval = setInterval(() => this.refreshGame(), 10000);
+  }
+
   destroy() {
-    this.closeSegment();
-    this.saveChatLog();
+    this.initSegment();
+    // this.saveChatLog();
     this.tmiClient.disconnect();
     if (this.refreshGameInterval) {
       clearInterval(this.refreshGameInterval);
@@ -99,14 +78,14 @@ export class Twitch {
           client_secret: this.client_secret,
           grant_type: "client_credentials",
         },
-      },
+      }
     );
     this.appToken = response.data.access_token;
   }
 
   private async setUpTMI() {
     const tmiClient = new tmi.Client({
-      channels: [this.streamer],
+      channels: [this.streamer.name],
     });
 
     tmiClient.on("message", this.handleMessage);
@@ -114,22 +93,26 @@ export class Twitch {
     this.tmiClient = tmiClient;
   }
 
-  handleMessage(
+  async handleMessage(
     channel: string,
     tags: tmi.ChatUserstate,
     text: string,
-    self: boolean,
+    self: boolean
   ) {
-    assert(channel === `#${this.streamer}`); // Running for only a single streamer now, so channel is always the same
+    assert(channel === `#${this.streamer.name}`); // Running for only a single streamer now, so channel is always the same
     assert(!self); // We don't want the bot to ever send a message
     const date = new Date();
-    const msg: Message = {
-      username: tags.username || "[UNKNOWN]",
-      text,
-      secondsSinceStart:
-        (date.getTime() - this.currentStream.start.getTime()) / 1000,
-    };
-    this.currentSegment.messages.push(msg);
+    const msg: Message = await prisma.message.create({
+      data: {
+        segment: {
+          connect: { id: this.currentSegment.id },
+        },
+        username: tags.username || "[UNKNOWN]",
+        text,
+        secondsSinceStart:
+          (date.getTime() - this.currentStream.start.getTime()) / 1000,
+      },
+    });
     console.log(msg);
   }
 
@@ -155,7 +138,7 @@ export class Twitch {
   async getStreamInfo() {
     const response = await this.reauthGet(
       "https://api.twitch.tv/helix/streams",
-      { user_login: this.streamer },
+      { user_login: this.streamer.name }
     );
     if (response.data.data.length === 0) {
       return [NO_GAME, null, null];
@@ -164,53 +147,69 @@ export class Twitch {
     return [stream.game_name, stream.id, stream.started_at];
   }
 
-  closeSegment(game?: string) {
-    this.currentStream.segments.push(this.currentSegment);
-    this.currentSegment = {
-      start: new Date(),
-      game: game ?? NO_GAME,
-      messages: [],
-    };
+  async initSegment(game?: string) {
+    // if the final segment of the current stream in the DB matches the game, don't create a new one
+    const lastSegment = await prisma.segment.findFirst({
+      where: { streamId: this.currentStream.id },
+      orderBy: { start: "desc" },
+    });
+    console.log(`lastSegment: ${lastSegment}`);
+    if (lastSegment && lastSegment?.game === game) {
+      this.currentSegment = lastSegment;
+      return;
+    }
+    this.currentSegment = await prisma.segment.create({
+      data: {
+        start: new Date(),
+        stream: { connect: { id: this.currentStream.id } },
+        game: game ?? NO_GAME,
+      },
+    });
   }
 
   async refreshGame() {
     const [newGame, streamId, startedAt] = await this.getStreamInfo();
-    const currentGame = this.currentSegment.game;
+    const currentGame = this.currentSegment?.game;
     if (currentGame === newGame) {
       return;
     }
     console.log(`Game changed from ${currentGame} to ${newGame}`);
-    this.closeSegment(newGame);
-    if (currentGame === NO_GAME || newGame === NO_GAME) {
-      // Stream just started or ended
-      this.saveChatLog();
-      this.currentStream = {
+    this.currentStream = await prisma.stream.upsert({
+      where: { twitchId: this.currentStream?.twitchId ?? "INVALID" },
+      create: {
+        streamer: {
+          connect: { id: this.streamer.id },
+        },
         ...(newGame !== NO_GAME
-          ? { id: streamId, live: true }
+          ? { twitchId: streamId, live: true }
           : { live: false }),
         start: startedAt ? new Date(startedAt) : new Date(),
-        segments: [],
-      };
-      return;
-    }
+      },
+      update: {},
+    });
+    await this.initSegment(newGame);
+    console.log("Here are the stream and segment:");
+    console.log(this.currentStream);
+    console.log(this.currentSegment);
+    return;
   }
 
-  private saveChatLog() {
-    // Don't save zero-message off-streams
-    if (
-      !this.currentStream.live &&
-      this.currentStream.segments[0].messages.length === 0
-    ) {
-      return;
-    }
-    const timestamp = this.currentStream.start.toISOString();
-    // NOTE: How to handle race conditions?
-    const data = JSON.stringify(this.currentStream, null, 2);
-    const name = this.currentStream.live ? "live" : "off";
-    this.currentSegment.messages = [];
-    if (!fs.existsSync(`./data/${this.streamer}`)) {
-      fs.mkdirSync(`./data/${this.streamer}`, { recursive: true });
-    }
-    fs.writeFileSync(`./data/${this.streamer}/${timestamp}_${name}.json`, data);
-  }
+  // private saveChatLog() {
+  //   // Don't save zero-message off-streams
+  //   if (
+  //     !this.currentStream.live &&
+  //     this.currentStream.segments[0].messages.length === 0
+  //   ) {
+  //     return;
+  //   }
+  //   const timestamp = this.currentStream.start.toISOString();
+  //   // NOTE: How to handle race conditions?
+  //   const data = JSON.stringify(this.currentStream, null, 2);
+  //   const name = this.currentStream.live ? "live" : "off";
+  //   this.currentSegment.messages = [];
+  //   if (!fs.existsSync(`./data/${this.streamer}`)) {
+  //     fs.mkdirSync(`./data/${this.streamer}`, { recursive: true });
+  //   }
+  //   fs.writeFileSync(`./data/${this.streamer}/${timestamp}_${name}.json`, data);
+  // }
 }

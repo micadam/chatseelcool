@@ -10,6 +10,12 @@ COPY package*.json ./
 # Install the dependencies
 RUN npm install --omit=dev
 
+# copy the prisma schema and generate the prisma client
+COPY ./prisma ./prisma
+# write the postgres url into .env
+RUN echo "DATABASE_URL=postgresql://coolseel:password@db:5432/coolseel" > .env
+RUN npx prisma generate
+
 # Copy the source code to the working directory
 COPY ./dist ./dist
 
