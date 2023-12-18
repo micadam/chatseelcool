@@ -1,0 +1,178 @@
+body {
+	font-family: 'Roboto', sans-serif;
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	margin: 0;
+	background-color: #f4f4f4;
+	color: #333;
+	font-weight: lighter;
+}
+
+@media(prefers-color-scheme: dark) {
+  body {
+    background-color: #333;
+    color: #fff;
+  }
+}
+
+#container.dark *,
+#dark-mode-toggle.dark {
+	background-color: #333;
+	color: #fff;
+}
+
+* {
+	transition: background-color 0.5s ease;
+}
+
+#container {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+#container.dark a:visited {
+	color: #bbb;
+}
+
+#container .active,
+#container .active * {
+	background-color: #ddd;
+}
+
+#container.dark .active,
+#container.dark .active * {
+	background-color: #555;
+}
+
+a {
+	color: #000;
+}
+
+a:visited {
+	color: #999;
+}
+
+#dark-mode-toggle {
+	position: absolute;
+	top: 0;
+	right: 0;
+	padding: 0.5em;
+	font-size: 1.5em;
+	cursor: pointer;
+}
+
+#dark-mode-toggle span.theme-active {
+	text-decoration: underline;
+}
+
+#streamers {
+	display: flex;
+	justify-content: flex-start;
+	padding: 20px;
+	background-color: #fff;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	border-bottom: 1px solid #ddd;
+	padding: 0;
+}
+
+.streamer {
+	margin: 0;
+	padding: 0.5em;
+	border: 1px solid #ddd;
+	font-size: 2.5em;
+	color: #333;
+	cursor: pointer;
+}
+
+#lower-content {
+	display: flex;
+	flex-direction: row;
+	flex-grow: 1;
+}
+
+#streams {
+	border-right: 1px solid #ddd;
+	width: 25%;
+	overflow: auto;
+	padding: 20px;
+	background-color: #fff;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	word-wrap: break-word;
+}
+
+h1 {
+	font-weight: normal;
+}
+
+.game-name {
+	font-size: 0.9em;
+	position: relative;
+	color: #666;
+}
+
+.game-name:not(:last-child)::after {
+	content: '|';
+	margin-left: 0.25em;
+	margin-right: 0.5em;
+	user-select: none;
+}
+
+.stream {
+	border: 1px solid #ddd;
+	margin: 0;
+	padding: 20px;
+	background-color: #fff;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	animation: fadein 0.5s;
+	cursor: pointer;
+}
+
+.stream:hover {
+	background-color: #f4f4f4;
+}
+
+#stream-stats {
+	padding: 1em;
+	flex-grow: 1;
+	align-items: left;
+	justify-content: center;
+	background-color: #fff;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#donation {
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	text-anchor: bottom;
+}
+
+.category-selector {
+	display: flex;
+	font-size: 1.5em;
+	font-weight: lighter;
+}
+
+input[type='radio'] {
+	display: none;
+}
+
+label {
+	display: inline-block;
+	padding: 5px 10px;
+	margin: 0;
+	border: 1px solid #ddd;
+	background-color: #f4f4f4;
+	color: #333;
+	cursor: pointer;
+}
+
+label:hover {
+	background-color: #ddd;
+}
+
+input[type='radio']:checked + label {
+	background-color: #ddd;
+}

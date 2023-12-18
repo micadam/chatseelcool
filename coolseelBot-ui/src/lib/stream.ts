@@ -38,7 +38,8 @@ export enum Category {
 	POG,
 	LAUGH,
 	SCARY,
-	HORNY,
+	SHOCK,
+	// HORNY,
 	MUSIC,
 	GOOD_BIT,
 	BAD_BIT
