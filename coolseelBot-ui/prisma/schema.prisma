@@ -16,6 +16,7 @@ model Streamer {
 model Stream {
   id         Int       @id @default(autoincrement())
   twitchId   String?   @unique
+  vodId      String?   @unique
   streamerId Int
   streamer   Streamer  @relation(fields: [streamerId], references: [id])
   start      DateTime

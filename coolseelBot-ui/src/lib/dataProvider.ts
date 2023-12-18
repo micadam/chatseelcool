@@ -1,99 +1,105 @@
-import fs from 'fs';
-import { PrismaClient, type Segment, type Stream, type Streamer } from '@prisma/client';
-import { Category, type CategoryStats, type StreamStats } from './stream';
+import { PrismaClient, type Stream, type Streamer } from '@prisma/client';
+import { Category, type CategoryStats } from './stream';
 
 const CLIP_DURATION = 20;
 const CLIP_OFFSET = 5;
 
-const KEYWORDS_PER_CATEGORY = new Map<Category, string[]>([
-	[Category.ALL, ['']],
-	[Category.POG, ['pog', 'poggers', 'pogchamp', 'letsgo', 'pogcrazy']],
-	[Category.LAUGH, ['lul', 'icant']],
-	[Category.SCARY, ['monkas']],
-	[Category.HORNY, ['cocka']],
-	[Category.GOOD_BIT, ['+2']],
-	[Category.BAD_BIT, ['-2']]
-]);
+const KEYWORDS_PER_CATEGORY = {
+	[Category.ALL]: [''],
+	[Category.POG]: ['pog', 'poggers', 'pogchamp', 'letsgo', 'pogcrazy'],
+	[Category.LAUGH]: ['lul', 'icant', 'kekw'],
+	[Category.SCARY]: ['monkas'],
+	[Category.HORNY]: ['cocka'],
+	[Category.GOOD_BIT]: ['+2'],
+	[Category.BAD_BIT]: ['-2']
+}
+
+function escapeRegExp(str: string) {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const CATEGORY_TO_REGEX = Object.entries(KEYWORDS_PER_CATEGORY).reduce((obj, [category, keywords]) => {
+	obj[category as unknown as Category] = new RegExp(`\\b(${keywords.map(keyword => escapeRegExp(keyword)).join('|')})\\b`, 'i');
+	return obj;
+}, {} as Record<Category, RegExp>);
+
+
+export const CLIENT_INSTANCE = new PrismaClient();
 
 export class PrismaDataProvider {
-	private readonly client: PrismaClient;
-	constructor() {
-		this.client = new PrismaClient();
-	}
 	async getStreamers() {
-		return await this.client.streamer.findMany();
+		return await CLIENT_INSTANCE.streamer.findMany();
 	}
 
 	async getDataForStreamer(streamer: Streamer) {
-		const data = await this.client.stream.findMany({
+		const data = await CLIENT_INSTANCE.stream.findMany({
 			where: {
 				streamerId: streamer.id,
-				live: true,
+				live: true
 			},
 			include: {
-				segments: true,
+				segments: true
+			},
+			orderBy: {
+				start: 'desc'
 			}
 		});
-		for (const stream of data) {
-			console.log(stream.segments);
-		}
 		return data;
 	}
 
 	async getStreamStats(stream: Stream) {
-		const messages = await this.client.message.findMany({
+		const messages = await CLIENT_INSTANCE.message.findMany({
+			select: {
+				text: true,
+				secondsSinceStart: true
+			},
 			where: {
 				segment: {
 					stream: {
 						id: stream.id,
-						live: true,
+						live: true
 					}
 				}
 			}
 		});
 
 		const categoryStats = new Map<Category, CategoryStats>();
-		for (const [category, keywords] of KEYWORDS_PER_CATEGORY.entries()) {
-			const matchingPeriods = messages
-				.filter((message) =>
-					keywords.some(
-						(keyword) => keyword == '' || message.text.toLowerCase().split(/(\s+)/).includes(keyword)
-					)
-				)
-				.map((message) => Math.trunc(message.secondsSinceStart / CLIP_DURATION));
-			if (matchingPeriods.length == 0) {
-				categoryStats.set(category, {
-					topClips: [],
-					messagesPerPeriod: []
+		const categoryStatsPromises = Object.entries(CATEGORY_TO_REGEX).map(
+			async ([cat, regex]) => {
+				const category = cat as unknown as Category;
+				let maxPeriod = 0;
+
+				const counts: Record<number, number> = messages.reduce((counts, message) => {
+					if (category == Category.ALL || regex.test(message.text)) {
+						const period = Math.trunc(message.secondsSinceStart / CLIP_DURATION);
+						maxPeriod = Math.max(maxPeriod, period);
+						counts[period] = (counts[period] || 0) + 1;
+					}
+					return counts;
+				}, {} as Record<number, number>);
+
+				const topClips = Object.entries(counts)
+					.filter(([_, count]) => count >= CLIP_DURATION)
+					.sort(([_, count1], [__, count2]) => count2 - count1)
+					.slice(0, 20)
+					.map(([per, count]) => ({
+						secondsSinceStart: per as unknown as number * CLIP_DURATION + CLIP_OFFSET,
+						numMessages: count
+					}));
+				const messagesPerPeriod = new Array(maxPeriod + 1).fill(0);
+				Object.entries(counts).forEach(([period, count]) => {
+					messagesPerPeriod[period as unknown as number] = count;
 				});
-				continue;
+				categoryStats.set(category, {
+					topClips,
+					messagesPerPeriod
+				});
 			}
-			const counts = matchingPeriods.reduce(
-				(counts, period) => counts.set(period, (counts.get(period) ?? 0) + 1),
-				new Map<number, number>()
-			);
-			const topClips = [...counts.entries()]
-			.filter(([_, count]) => count >= CLIP_DURATION)
-				.sort(([_, count1], [__, count2]) => count2 - count1)
-				.slice(0, 20)
-				.map(([period, count]) => ({
-					secondsSinceStart: period * CLIP_DURATION + CLIP_OFFSET,
-					numMessages: count
-				}));
-			const maxPeriod = Math.max(...counts.keys());
-			console.log(maxPeriod);
-			const messagesPerPeriod = new Array(maxPeriod + 1).fill(0);
-			counts.forEach((period, count) => {
-				messagesPerPeriod[period] = count;
-			});
-			categoryStats.set(category, {
-				topClips,
-				messagesPerPeriod
-			});
-		}
+		);
+		await Promise.all(categoryStatsPromises);
 
 		return {
-			categoryStats
+			categoryStats: categoryStats
 		};
 	}
 }

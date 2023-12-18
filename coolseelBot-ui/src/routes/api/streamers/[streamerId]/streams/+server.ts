@@ -1,7 +1,5 @@
-import { INSTANCE as dataProvider } from '$lib/dataProvider';
+import { INSTANCE as dataProvider, CLIENT_INSTANCE as client } from '$lib/dataProvider';
 import { PrismaClient, type Streamer } from '@prisma/client';
-
-const client = new PrismaClient();
 
 export async function GET(request) {
 	const { streamerId } = request.params;

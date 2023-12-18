@@ -24,6 +24,7 @@ export class Twitch {
   currentStream!: Stream;
   currentSegment!: Segment;
   refreshGameInterval: NodeJS.Timeout | null = null;
+  matchVodsInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.client_id = process.env.TWITCH_CLIENT_ID!;
@@ -54,8 +55,10 @@ export class Twitch {
       update: {},
     });
     await this.refreshGame();
+    await this.tryToMatchVods();
     await this.setUpTMI();
     this.refreshGameInterval = setInterval(() => this.refreshGame(), 10000);
+    this.matchVodsInterval = setInterval(() => this.tryToMatchVods(), 60000);
   }
 
   destroy() {
@@ -65,6 +68,10 @@ export class Twitch {
     if (this.refreshGameInterval) {
       clearInterval(this.refreshGameInterval);
       this.refreshGameInterval = null;
+    }
+    if (this.matchVodsInterval) {
+      clearInterval(this.matchVodsInterval);
+      this.matchVodsInterval = null;
     }
   }
 
@@ -185,7 +192,7 @@ export class Twitch {
       startedAt = new Date();
     }
     this.currentStream = await prisma.stream.upsert({
-      where: { twitchId: this.currentStream?.twitchId ?? "INVALID" },
+      where: { twitchId: streamId },
       create: {
         streamer: {
           connect: { id: this.streamer.id },
@@ -202,4 +209,55 @@ export class Twitch {
     console.log(this.currentSegment);
     return;
   }
+
+  async getUserId(username: string) {
+    const response = await this.reauthGet(
+      "https://api.twitch.tv/helix/users",
+      { login: username }
+    );
+    if (response.data.data.length === 0) {
+      return null;
+    }
+    return response.data.data[0].id;
+  }
+
+  async getVodId(stream: Stream & { streamer: Streamer }) {
+    const userId = await this.getUserId(stream.streamer.name);
+    if (!userId) {
+      return null;
+    }
+    const response = await this.reauthGet(
+      "https://api.twitch.tv/helix/videos",
+      { user_id: userId, type: "archive" }
+    );
+    if (response.data.data.length === 0) {
+      return null;
+    }
+    const matching = response.data.data.filter((vod: {stream_id: string}) => vod.stream_id === stream.twitchId)
+    if (matching.length === 0) {
+      return null;
+    }
+    return matching[0].id;
+  }
+
+  async tryToMatchVods() {
+    const streamsWithoutVods = await prisma.stream.findMany({
+      where: { vodId: null, live: true },
+      include: { streamer: true },
+    });
+    console.log(`Attempting to match ${streamsWithoutVods.length} streams without vods`)
+    let count = 0;
+    for (const stream of streamsWithoutVods) {
+      const vodId = await this.getVodId(stream);
+      if (vodId) {
+        await prisma.stream.update({
+          where: { id: stream.id },
+          data: { vodId },
+        });
+        count++;
+      }
+    }
+    console.log(`Matched ${count}/${streamsWithoutVods.length} vods`)
+  }
+
 }

@@ -119,7 +119,7 @@
 						{#each streamStats.categoryStats[currentCategory].topClips as clip}
 							<li>
 								<a
-									href="http://twitch.tv/videos/{currentStream.twitchId}?t={clip.secondsSinceStart}s"
+									href="http://twitch.tv/videos/{currentStream.vodId}?t={clip.secondsSinceStart}s"
 								>
 									Time: {getTimeStr(clip.secondsSinceStart)}, hits: {clip.numMessages}
 								</a>
