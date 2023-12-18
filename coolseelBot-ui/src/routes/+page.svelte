@@ -1,36 +1,36 @@
 <script lang="ts">
-	import type { Stream, StreamStatsObj } from '$lib/stream';
+	import type { StreamStatsObj } from '$lib/stream';
 	import { Category } from '$lib/stream';
+	import type { Segment, Stream, Streamer } from '@prisma/client';
 	import { onMount } from 'svelte';
 
-	let streamersPromise: Promise<string[]>;
-	let currentStreamer: string;
-	let currentStream: Stream;
-	let streams: Stream[] = [];
+	let streamersPromise: Promise<Streamer[]>;
+	let currentStreamer: Streamer;
+	let currentStream: Stream & { segments: Segment[] };
+	let streams: (Stream & { segments: Segment[] })[] = [];
 	let streamStats: StreamStatsObj;
 	let currentCategory: string = '0';
 
 	onMount(() => {
 		streamersPromise = fetch('/api/streamers').then(async (res) => {
 			const data = await res.json();
-			console.log(data);
 			currentStreamer = data[0];
 			fetchStreams(currentStreamer);
 			return data;
 		});
 	});
 
-	const fetchStreams = async (streamer: string) => {
+	const fetchStreams = async (streamer: Streamer) => {
 		currentStreamer = streamer;
-		const response = await fetch(`/api/streams/${streamer}`);
+		const response = await fetch(`/api/streamers/${streamer.id}/streams`);
 		const data = await response.json();
 		streams = data;
 		currentStream = undefined as any;
 		streamStats = undefined as any;
 	};
 
-	const fetchStreamStats = async (streamer: string, stream: Stream) => {
-		const response = await fetch(`/api/stream-stats/${streamer}/${stream.id}`);
+	const fetchStreamStats = async (stream: Stream & { segments: Segment[] }) => {
+		const response = await fetch(`/api/streams/${stream.id}/stats`);
 		streamStats = await response.json();
 		currentStream = stream;
 	};
@@ -61,10 +61,11 @@
 						class="streamer"
 						role="button"
 						tabindex={index}
+						class:active={currentStreamer === streamer}
 						on:click={() => fetchStreams(streamer)}
 						on:keypress={() => fetchStreams(streamer)}
 					>
-						{streamer}
+						{streamer.name}
 					</div>
 				{/each}
 			</div>
@@ -77,8 +78,8 @@
 						role="button"
 						tabindex={index}
 						class:active={currentStream === stream}
-						on:click={() => fetchStreamStats(currentStreamer, stream)}
-						on:keypress={() => fetchStreamStats(currentStreamer, stream)}
+						on:click={() => fetchStreamStats(stream)}
+						on:keypress={() => fetchStreamStats(stream)}
 					>
 						<h1>
 							{new Date(stream.start).toLocaleDateString('default', {
@@ -115,10 +116,12 @@
 						Here are the top clips from this stream from the {Category[currentCategory]} category
 					</p>
 					<ol>
-						{#each streamStats.categoryStats[currentCategory].topClips as stat}
+						{#each streamStats.categoryStats[currentCategory].topClips as clip}
 							<li>
-								<a href="http://twitch.tv/videos/{currentStream.id}?t={stat.secondsSinceStart}s">
-									Time: {getTimeStr(stat.secondsSinceStart)}, hits: {stat.numMessages}
+								<a
+									href="http://twitch.tv/videos/{currentStream.twitchId}?t={clip.secondsSinceStart}s"
+								>
+									Time: {getTimeStr(clip.secondsSinceStart)}, hits: {clip.numMessages}
 								</a>
 							</li>
 						{/each}
@@ -154,6 +157,10 @@
 		margin: 0;
 	}
 
+	.streamer.active {
+		background-color: #ddd;
+	}
+	
 	#lower-content {
 		display: flex;
 		flex-direction: row;

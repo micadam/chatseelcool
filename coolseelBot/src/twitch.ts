@@ -168,22 +168,31 @@ export class Twitch {
   }
 
   async refreshGame() {
-    const [newGame, streamId, startedAt] = await this.getStreamInfo();
+    let [newGame, streamId, startedAt] = await this.getStreamInfo();
     const currentGame = this.currentSegment?.game;
     if (currentGame === newGame) {
       return;
     }
     console.log(`Game changed from ${currentGame} to ${newGame}`);
+    if (newGame === NO_GAME) {
+      // find the most recent stream (or 0), and set the current twitch ID to
+      // the twitch ID of that stream plus "_post"
+      const lastStream = await prisma.stream.findFirst({
+        where: { streamerId: this.streamer.id },
+        orderBy: { start: "desc" },
+      });
+      streamId = `${lastStream?.twitchId ?? "PRESTREAM"}_post`;
+      startedAt = new Date();
+    }
     this.currentStream = await prisma.stream.upsert({
       where: { twitchId: this.currentStream?.twitchId ?? "INVALID" },
       create: {
         streamer: {
           connect: { id: this.streamer.id },
         },
-        ...(newGame !== NO_GAME
-          ? { twitchId: streamId, live: true }
-          : { live: false }),
-        start: startedAt ? new Date(startedAt) : new Date(),
+        live: newGame !== NO_GAME,
+        twitchId: streamId,
+        start: startedAt,
       },
       update: {},
     });
@@ -193,23 +202,4 @@ export class Twitch {
     console.log(this.currentSegment);
     return;
   }
-
-  // private saveChatLog() {
-  //   // Don't save zero-message off-streams
-  //   if (
-  //     !this.currentStream.live &&
-  //     this.currentStream.segments[0].messages.length === 0
-  //   ) {
-  //     return;
-  //   }
-  //   const timestamp = this.currentStream.start.toISOString();
-  //   // NOTE: How to handle race conditions?
-  //   const data = JSON.stringify(this.currentStream, null, 2);
-  //   const name = this.currentStream.live ? "live" : "off";
-  //   this.currentSegment.messages = [];
-  //   if (!fs.existsSync(`./data/${this.streamer}`)) {
-  //     fs.mkdirSync(`./data/${this.streamer}`, { recursive: true });
-  //   }
-  //   fs.writeFileSync(`./data/${this.streamer}/${timestamp}_${name}.json`, data);
-  // }
 }

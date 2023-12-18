@@ -1,6 +1,6 @@
 import { INSTANCE as dataProvider } from '$lib/dataProvider';
 
-export function GET(request): Response {
-	const data = JSON.stringify(dataProvider.getStreamers());
+export async function GET() {
+	const data = JSON.stringify(await dataProvider.getStreamers());
 	return new Response(data);
 }

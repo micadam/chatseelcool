@@ -1,18 +1,6 @@
 import fs from 'fs';
-
-import {
-	Category,
-	type Stream,
-	type StreamStats,
-	type StreamerWithMessages,
-	type CategoryStats
-} from '$lib/stream';
-
-abstract class DataProvider {
-	abstract getStreamers(): String[];
-	abstract getDataForStreamer(streamer: String): Stream[];
-	abstract getStreamStats(streamer: String, streamId: String): StreamStats;
-}
+import { PrismaClient, type Segment, type Stream, type Streamer } from '@prisma/client';
+import { Category, type CategoryStats, type StreamStats } from './stream';
 
 const CLIP_DURATION = 20;
 const CLIP_OFFSET = 5;
@@ -27,103 +15,87 @@ const KEYWORDS_PER_CATEGORY = new Map<Category, string[]>([
 	[Category.BAD_BIT, ['-2']]
 ]);
 
-export class JSONDataProvider extends DataProvider {
-	private readonly data: StreamerWithMessages[];
-
-	constructor(fileDir: string) {
-		super();
-		this.data = [
-			...fs.readdirSync(fileDir).map((streamer) => {
-				const streamerDir = `${fileDir}/${streamer}`;
-				return {
-					name: streamer,
-					streams: fs
-						.readdirSync(streamerDir)
-						.map((fileName) => {
-							const file = fs.readFileSync(`${streamerDir}/${fileName}`, { encoding: 'utf-8' });
-							return JSON.parse(file);
-						})
-						.filter((stream) => stream.live)
-						.sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())
-				};
-			})
-		];
+export class PrismaDataProvider {
+	private readonly client: PrismaClient;
+	constructor() {
+		this.client = new PrismaClient();
+	}
+	async getStreamers() {
+		return await this.client.streamer.findMany();
 	}
 
-	getStreamers(): String[] {
-		return this.data.map((streamer) => streamer.name);
-	}
-
-	getDataForStreamer(streamer: String): Stream[] {
-		const streams = this.data.find((s) => s.name === streamer)?.streams ?? [];
-		// return streams without messages
-		return streams.map((stream) => ({
-			id: stream.id,
-			start: stream.start,
-			segments: stream.segments.map((segment) => ({
-				start: segment.start,
-				game: segment.game
-			})),
-			live: stream.live
-		}));
-	}
-
-	getStreamStats(streamer: String, streamId: String): StreamStats {
-		const stream = this.data
-			.find((s) => s.name === streamer)
-			?.streams.find((s) => s.id === streamId);
-		if (stream === undefined) {
-			return {
-				categoryStats: new Map<Category, CategoryStats>()
-			};
+	async getDataForStreamer(streamer: Streamer) {
+		const data = await this.client.stream.findMany({
+			where: {
+				streamerId: streamer.id,
+				live: true,
+			},
+			include: {
+				segments: true,
+			}
+		});
+		for (const stream of data) {
+			console.log(stream.segments);
 		}
-		const messages = stream.segments.map((segment) => segment.messages).flat();
+		return data;
+	}
+
+	async getStreamStats(stream: Stream) {
+		const messages = await this.client.message.findMany({
+			where: {
+				segment: {
+					stream: {
+						id: stream.id,
+						live: true,
+					}
+				}
+			}
+		});
+
 		const categoryStats = new Map<Category, CategoryStats>();
-		KEYWORDS_PER_CATEGORY.forEach((keywords, category) => {
-			const messagesWithKeywords = messages
+		for (const [category, keywords] of KEYWORDS_PER_CATEGORY.entries()) {
+			const matchingPeriods = messages
 				.filter((message) =>
 					keywords.some(
-						(keyword) =>
-							keyword == '' || message.text.toLowerCase().split(/(\s+)/).includes(keyword)
+						(keyword) => keyword == '' || message.text.toLowerCase().split(/(\s+)/).includes(keyword)
 					)
 				)
 				.map((message) => Math.trunc(message.secondsSinceStart / CLIP_DURATION));
-			if (messagesWithKeywords.length === 0) {
+			if (matchingPeriods.length == 0) {
 				categoryStats.set(category, {
 					topClips: [],
 					messagesPerPeriod: []
 				});
-				return;
+				continue;
 			}
-			const messagesPerPeriod = new Map<number, number>();
-			messagesWithKeywords.forEach((seconds) =>
-				messagesPerPeriod.set(seconds, (messagesPerPeriod.get(seconds) ?? 0) + 1)
+			const counts = matchingPeriods.reduce(
+				(counts, period) => counts.set(period, (counts.get(period) ?? 0) + 1),
+				new Map<number, number>()
 			);
-
-			const topClips = [...messagesPerPeriod.entries()]
-				.sort((a, b) => b[1] - a[1])
+			const topClips = [...counts.entries()]
+			.filter(([_, count]) => count >= CLIP_DURATION)
+				.sort(([_, count1], [__, count2]) => count2 - count1)
 				.slice(0, 20)
-				.map((entry) => ({
-					secondsSinceStart: entry[0] * CLIP_DURATION - CLIP_OFFSET,
-					numMessages: entry[1]
-				}))
-				.filter((clip) => clip.numMessages >= CLIP_DURATION); // require at least one message per second
-			const maxPeriod = Math.max(...messagesPerPeriod.keys());
-			const messagesPerPeriodArray = new Array(maxPeriod + 1).fill(0);
-			messagesPerPeriod.forEach((value, key) => {
-				messagesPerPeriodArray[key] = value;
+				.map(([period, count]) => ({
+					secondsSinceStart: period * CLIP_DURATION + CLIP_OFFSET,
+					numMessages: count
+				}));
+			const maxPeriod = Math.max(...counts.keys());
+			console.log(maxPeriod);
+			const messagesPerPeriod = new Array(maxPeriod + 1).fill(0);
+			counts.forEach((period, count) => {
+				messagesPerPeriod[period] = count;
 			});
 			categoryStats.set(category, {
 				topClips,
-				messagesPerPeriod: messagesPerPeriodArray
+				messagesPerPeriod
 			});
-		});
+		}
+
 		return {
 			categoryStats
 		};
 	}
 }
 
-export const INSTANCE: DataProvider = new JSONDataProvider(
-	'/home/adam/coolseelBot/coolseelBot/data'
-);
+export const INSTANCE = new PrismaDataProvider();
