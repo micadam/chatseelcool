@@ -2,14 +2,15 @@ import { PrismaClient, type Stream, type Streamer } from '@prisma/client';
 import { Category, type CategoryStats } from './stream';
 
 const CLIP_DURATION = 20;
-const CLIP_OFFSET = 5;
+const CLIP_OFFSET = 10;
 
 const KEYWORDS_PER_CATEGORY = {
 	[Category.ALL]: [''],
-	[Category.POG]: ['pog', 'poggers', 'pogchamp', 'letsgo', 'pogcrazy'],
-	[Category.LAUGH]: ['lul', 'icant', 'kekw'],
-	[Category.SCARY]: ['monkas'],
-	[Category.HORNY]: ['cocka'],
+	[Category.POG]: ['Pog', 'POGGERS', 'PogChamp', 'LETSGO', 'POGCRAZY'],
+	[Category.LAUGH]: ['LUL', 'ICANT', 'KEKW'],
+	[Category.SCARY]: ['monkaS'],
+	[Category.HORNY]: ['COCKA'],
+	[Category.MUSIC]: ['Jupijej', 'VIBE', 'DinoDance', 'ratJAM'],
 	[Category.GOOD_BIT]: ['+2'],
 	[Category.BAD_BIT]: ['-2']
 }
@@ -19,7 +20,7 @@ function escapeRegExp(str: string) {
 }
 
 const CATEGORY_TO_REGEX = Object.entries(KEYWORDS_PER_CATEGORY).reduce((obj, [category, keywords]) => {
-	obj[category as unknown as Category] = new RegExp(`\\b(${keywords.map(keyword => escapeRegExp(keyword)).join('|')})\\b`, 'i');
+	obj[category as unknown as Category] = new RegExp(`(^|\\W)(${keywords.map(keyword => escapeRegExp(keyword)).join('|')})(\\W|$)`);
 	return obj;
 }, {} as Record<Category, RegExp>);
 
@@ -83,7 +84,7 @@ export class PrismaDataProvider {
 					.sort(([_, count1], [__, count2]) => count2 - count1)
 					.slice(0, 20)
 					.map(([per, count]) => ({
-						secondsSinceStart: per as unknown as number * CLIP_DURATION + CLIP_OFFSET,
+						secondsSinceStart: per as unknown as number * CLIP_DURATION - CLIP_OFFSET,
 						numMessages: count
 					}));
 				const messagesPerPeriod = new Array(maxPeriod + 1).fill(0);

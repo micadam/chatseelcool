@@ -11,7 +11,10 @@
 	let streamStats: StreamStatsObj;
 	let currentCategory: string = '0';
 
+	let theme = 'light';
+
 	onMount(() => {
+		theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 		streamersPromise = fetch('/api/streamers').then(async (res) => {
 			const data = await res.json();
 			currentStreamer = data[0];
@@ -48,85 +51,108 @@
 		str += `${seconds}s`;
 		return str;
 	};
+
+	const switchTheme = () => {
+		if (theme === 'light') {
+			theme = 'dark';
+		} else {
+			theme = 'light';
+		}
+	};
 </script>
+
+<div
+	id="dark-mode-toggle"
+	role="button"
+	tabindex="0"
+	class:dark={theme === 'dark'}
+	on:click={switchTheme}
+	on:keypress={switchTheme}
+>
+	<span class:theme-active={theme === 'dark'}>d</span>
+	|
+	<span class:theme-active={theme === 'light'}>l</span>
+</div>
 
 {#if streamersPromise}
 	{#await streamersPromise}
 		<p>loading...</p>
 	{:then streamers}
-		{#if streamers.length > 1}
-			<div id="streamers">
-				{#each streamers as streamer, index}
-					<div
-						class="streamer"
-						role="button"
-						tabindex={index}
-						class:active={currentStreamer === streamer}
-						on:click={() => fetchStreams(streamer)}
-						on:keypress={() => fetchStreams(streamer)}
-					>
-						{streamer.name}
-					</div>
-				{/each}
-			</div>
-		{/if}
-		<div id="lower-content">
-			<div id="streams">
-				{#each streams as stream, index}
-					<div
-						class="stream"
-						role="button"
-						tabindex={index}
-						class:active={currentStream === stream}
-						on:click={() => fetchStreamStats(stream)}
-						on:keypress={() => fetchStreamStats(stream)}
-					>
-						<h1>
-							{new Date(stream.start).toLocaleDateString('default', {
-								day: 'numeric',
-								month: 'long',
-								year: 'numeric'
-							})}
-						</h1>
-						<div>
-							{#each stream.segments as segment}
-								<span class="game-name">
-									{segment.game}
-								</span>
+		<div id="container" class:dark={theme === 'dark'}>
+			{#if streamers.length > 1}
+				<div id="streamers">
+					{#each streamers as streamer, index}
+						<div
+							class="streamer"
+							role="button"
+							tabindex={index}
+							class:active={currentStreamer === streamer}
+							on:click={() => fetchStreams(streamer)}
+							on:keypress={() => fetchStreams(streamer)}
+						>
+							{streamer.name}
+						</div>
+					{/each}
+				</div>
+			{/if}
+			<div id="lower-content">
+				<div id="streams">
+					{#each streams as stream, index}
+						<div
+							class="stream"
+							role="button"
+							tabindex={index}
+							class:active={currentStream === stream}
+							on:click={() => fetchStreamStats(stream)}
+							on:keypress={() => fetchStreamStats(stream)}
+						>
+							<h1>
+								{new Date(stream.start).toLocaleDateString('default', {
+									day: 'numeric',
+									month: 'long',
+									year: 'numeric'
+								})}
+							</h1>
+							<div>
+								{#each stream.segments as segment}
+									<span class="game-name">
+										{segment.game}
+									</span>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				</div>
+				<div id="stream-stats">
+					{#if streamStats}
+						<div class="category-selector">
+							{#each Object.keys(Category).filter((k) => !isNaN(Number(k))) as category}
+								<input
+									type="radio"
+									checked={currentCategory === category[0]}
+									on:click={() => (currentCategory = category[0])}
+									on:keypress={() => (currentCategory = category[0])}
+									id={category[0]}
+								/>
+								<label for={category[0]}>{Category[category]}</label>
 							{/each}
 						</div>
-					</div>
-				{/each}
-			</div>
-			<div id="stream-stats">
-				{#if streamStats}
-					<div class="category-selector">
-						{#each Object.keys(Category).filter((k) => !isNaN(Number(k))) as category}
-							<input
-								type="radio"
-								checked={currentCategory === category[0]}
-								on:click={() => (currentCategory = category[0])}
-								on:keypress={() => (currentCategory = category[0])}
-								id={category[0]}
-							/>
-							<label for={category[0]}>{Category[category]}</label>
-						{/each}
-					</div>
-					<p>
-						Here are the top clips from this stream from the {Category[currentCategory]} category
-					</p>
-					<ol>
-						{#each streamStats.categoryStats[currentCategory].topClips as clip}
-							<li>
-								<a
-									href="http://twitch.tv/videos/{currentStream.vodId}?t={clip.secondsSinceStart}s"
-								>
-									Time: {getTimeStr(clip.secondsSinceStart)}, hits: {clip.numMessages}
-								</a>
-							</li>
-						{/each}
-					</ol>
-				{/if}
+						<p>
+							Here are the top clips from this stream from the {Category[currentCategory]} category
+						</p>
+						<ol>
+							{#each streamStats.categoryStats[currentCategory].topClips as clip}
+								<li>
+									<a
+										href="http://twitch.tv/videos/{currentStream.vodId}?t={clip.secondsSinceStart}s"
+									>
+										Time: {getTimeStr(clip.secondsSinceStart)}, hits: {clip.numMessages}
+									</a>
+								</li>
+							{/each}
+						</ol>
+					{/if}
+				</div>
 			</div>
 		</div>
 	{:catch error}
@@ -143,24 +169,69 @@
 		margin: 0;
 		background-color: #f4f4f4;
 		color: #333;
+		font-weight: lighter;
+	}
+
+	#container.dark *,
+	#dark-mode-toggle.dark {
+		background-color: #333;
+		color: #fff;
+	}
+
+	* {
+		transition: background-color 0.3s ease;
+	}
+
+	#container {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	#container.dark a:visited {
+		color: #bbb;
+	}
+
+	a:visited {
+		color: #444;
+	}
+
+	#dark-mode-toggle {
+		position: absolute;
+		top: 0;
+		right: 0;
+		padding: 0.5em;
+		font-size: 1.5em;
+		cursor: pointer;
+	}
+
+	#dark-mode-toggle span.theme-active {
+		text-decoration: underline;
 	}
 
 	#streamers {
 		display: flex;
-		justify-content: space-around;
+		justify-content: flex-start;
 		padding: 20px;
 		background-color: #fff;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		border-bottom: 1px solid #ddd;
+		padding: 0;
 	}
 
-	#upper-content {
+	.streamer {
 		margin: 0;
+		padding: 0.5em;
+		border: 1px solid #ddd;
+		font-size: 2.5em;
+		color: #333;
+		cursor: pointer;
 	}
 
 	.streamer.active {
 		background-color: #ddd;
 	}
-	
+
 	#lower-content {
 		display: flex;
 		flex-direction: row;
@@ -184,6 +255,8 @@
 
 	.game-name:not(:last-child)::after {
 		content: '|';
+		margin-left: 0.25em;
+		margin-right: 0.5em;
 		user-select: none;
 	}
 
@@ -194,20 +267,13 @@
 		background-color: #fff;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 		animation: fadein 0.5s;
+		cursor: pointer;
 	}
 	.stream:hover {
 		background-color: #f4f4f4;
 	}
 	.stream.active {
 		background-color: #ddd;
-	}
-
-	.streamer {
-		margin: 0;
-		padding: 0.5em;
-		border: 1px solid #ddd;
-		font-size: 2.5em;
-		color: #333;
 	}
 
 	#stream-stats {
@@ -237,7 +303,6 @@
 		background-color: #f4f4f4;
 		color: #333;
 		cursor: pointer;
-		transition: background-color 0.3s ease;
 	}
 
 	label:hover {

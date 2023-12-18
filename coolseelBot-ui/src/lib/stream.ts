@@ -39,6 +39,7 @@ export enum Category {
 	LAUGH,
 	SCARY,
 	HORNY,
+	MUSIC,
 	GOOD_BIT,
 	BAD_BIT
 }
