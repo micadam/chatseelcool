@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["tracing"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Streamer {
+  id      Int      @id @default(autoincrement())
+  name    String   @unique
+  streams Stream[]
+}
+
+model Stream {
+  id         Int       @id @default(autoincrement())
+  twitchId   String?   @unique
+  vodId      String?   @unique
+  streamerId Int
+  streamer   Streamer  @relation(fields: [streamerId], references: [id])
+  start      DateTime
+  segments   Segment[]
+  live       Boolean
+}
+
+model Segment {
+  id       Int       @id @default(autoincrement())
+  start    DateTime
+  streamId Int
+  stream   Stream    @relation(fields: [streamId], references: [id])
+  game     String
+  messages Message[]
+
+  @@unique([streamId(sort: Desc), start])
+}
+
+model Message {
+  id                Int     @id @default(autoincrement())
+  segmentId         Int
+  username          String
+  segment           Segment @relation(fields: [segmentId], references: [id])
+  text              String
+  secondsSinceStart Float
+}
