@@ -11,10 +11,11 @@ export async function GET(request) {
 	if (!stream) {
 		return new Response('', { status: 404 });
 	}
+	const streamStats = await dataProvider.getStreamStats(stream);
 	const data = JSON.stringify({
-		categoryStats: Object.fromEntries(
-			await dataProvider.getStreamStats(stream).then((stats) => stats.categoryStats)
-		)
+		categoryStats: Object.fromEntries(streamStats.categoryStats),
+		messagesPerGame: streamStats.messagesPerGame,
+		segments: streamStats.segments
 	});
 	return new Response(data);
 }

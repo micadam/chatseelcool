@@ -32,7 +32,7 @@ model Segment {
   game     String
   messages Message[]
 
-  @@unique([streamId, start])
+  @@unique([streamId(sort: Desc), start])
 }
 
 model Message {

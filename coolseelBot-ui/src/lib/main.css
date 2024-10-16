@@ -1,57 +1,60 @@
+html,
 body {
 	font-family: 'Roboto', sans-serif;
 	display: flex;
 	flex-direction: column;
-	height: 100vh;
+	height: 100%;
 	margin: 0;
-	background-color: #f4f4f4;
-	color: #333;
 	font-weight: lighter;
 }
 
-@media(prefers-color-scheme: dark) {
-  body {
-    background-color: #333;
-    color: #fff;
-  }
+#container {
+	--bg-primary: #f5f5f5;
+	--bg-secondary: #ddd;
+	--bg-tertiary: #bbb;
+	--bg-accent: #66aaff;
+	--fg-primary: #333;
+	--fg-secondary: #666;
+	--shadow-color: rgba(0, 0, 0, 0.1);
+	--border-color: #ddd;
+	background-color: var(--bg-primary);
+	color: var(--fg-primary);
 }
 
-#container.dark *,
-#dark-mode-toggle.dark {
-	background-color: #333;
-	color: #fff;
+#container.dark {
+	--bg-primary: #333;
+	--bg-secondary: #555;
+	--bg-tertiary: #777;
+	--bg-accent: #4466cc;
+	--fg-primary: #fff;
+	--fg-secondary: #bbb;
+	--border-color: #555;
+	--shadow-color: rgba(255, 255, 255, 0.1);
 }
 
 * {
-	transition: background-color 0.5s ease;
+	transition: background-color 0.3s ease;
 }
 
 #container {
-	height: 100%;
+	padding: 1em;
+	height: calc(100% - 2em);
 	display: flex;
 	flex-direction: column;
-}
-
-#container.dark a:visited {
-	color: #bbb;
+	overflow: scroll;
 }
 
 #container .active,
 #container .active * {
-	background-color: #ddd;
-}
-
-#container.dark .active,
-#container.dark .active * {
-	background-color: #555;
+	background-color: var(--bg-secondary);
 }
 
 a {
-	color: #000;
+	color: var(--fg-primary);
 }
 
 a:visited {
-	color: #999;
+	color: var(--fg-secondary);
 }
 
 #dark-mode-toggle {
@@ -71,45 +74,60 @@ a:visited {
 	display: flex;
 	justify-content: flex-start;
 	padding: 20px;
-	background-color: #fff;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-	border-bottom: 1px solid #ddd;
+	box-shadow: 0 2px 4px var(--shadow-color);
 	padding: 0;
+}
+
+#stats {
+	flex-grow: 1;
+	max-width: 100%;
+	overflow-y: auto;
 }
 
 .streamer {
 	margin: 0;
 	padding: 0.5em;
-	border: 1px solid #ddd;
 	font-size: 2.5em;
-	color: #333;
 	cursor: pointer;
 }
 
 #lower-content {
 	display: flex;
 	flex-direction: row;
+	flex: 1;
+	overflow: hidden;
+}
+
+#main-page {
+	position: relative;
+	display: flex;
+	flex-direction: column;
 	flex-grow: 1;
+	overflow: auto;
 }
 
 #streams {
 	border-right: 1px solid #ddd;
-	width: 25%;
-	overflow: auto;
-	padding: 20px;
-	background-color: #fff;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	width: 15em;
+	padding: 0.3em 1em;
+	box-shadow: 0 2px 4px var(--shadow-color);
 	word-wrap: break-word;
+	overflow: auto;
+	flex-shrink: 0;
 }
 
 h1 {
 	font-weight: normal;
 }
 
+.game-names {
+	text-align: justify;
+}
+
 .game-name {
 	font-size: 0.9em;
 	position: relative;
-	color: #666;
+	color: var(--fg-secondary);
 }
 
 .game-name:not(:last-child)::after {
@@ -120,17 +138,16 @@ h1 {
 }
 
 .stream {
-	border: 1px solid #ddd;
-	margin: 0;
-	padding: 20px;
-	background-color: #fff;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-	animation: fadein 0.5s;
+	border: 1px solid var(--border-color);
+	background-color: var(--bg-primary);
+	box-shadow: 0 2px 4px var(--shadow-color);
+	margin: 0.5em 0;
+	padding: 0.5em;
 	cursor: pointer;
 }
 
 .stream:hover {
-	background-color: #f4f4f4;
+	background-color: var(--bg-secondary);
 }
 
 #stream-stats {
@@ -138,8 +155,7 @@ h1 {
 	flex-grow: 1;
 	align-items: left;
 	justify-content: center;
-	background-color: #fff;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 2px 4px var(--shadow-color);
 }
 
 #donation {
@@ -151,8 +167,10 @@ h1 {
 
 .category-selector {
 	display: flex;
-	font-size: 1.5em;
+	font-size: 1em;
 	font-weight: lighter;
+	overflow-x: scroll;
+	max-width: 100%;
 }
 
 input[type='radio'] {
@@ -160,19 +178,34 @@ input[type='radio'] {
 }
 
 label {
+	background-color: var(--primary-color);
+	border: 1px solid var(--border-color);
+	color: var(--text-color);
+	box-shadow: 0 2px 4px var(--shadow-color);
 	display: inline-block;
-	padding: 5px 10px;
-	margin: 0;
-	border: 1px solid #ddd;
-	background-color: #f4f4f4;
-	color: #333;
+	padding: 0.5em 1em;
+	margin: 0 0.25em;
 	cursor: pointer;
+	transition: background-color 0.3s ease;
+	white-space: nowrap;
+	max-width: 100%;
 }
 
 label:hover {
-	background-color: #ddd;
+	background-color: var(--bg-tertiary);
 }
 
 input[type='radio']:checked + label {
-	background-color: #ddd;
+	background-color: var(--bg-secondary);
+}
+
+article {
+	max-width: 50em;
+	text-align: justify;
+}
+
+@media (max-width: 600px) {
+	#stats > #stream-stats {
+		width: 100%;
+	}
 }

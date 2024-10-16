@@ -7,12 +7,12 @@
 
 	let streamersPromise: Promise<Streamer[]> = Promise.resolve([]);
 	let currentStreamer: Streamer;
-	let currentStream: Stream & { segments: Segment[] };
+	let currentStream: (Stream & { segments: Segment[] }) | undefined;
 	let streams: (Stream & { segments: Segment[] })[] = [];
-	let streamStats: StreamStatsObj;
-	let streamStatsPromise: Promise<StreamStatsObj>;
+	let streamStatsPromise: Promise<StreamStatsObj> | undefined;
 
 	let theme = 'light';
+	let showResetButton = false;
 
 	onMount(() => {
 		theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -30,7 +30,6 @@
 		const data = await response.json();
 		streams = data;
 		currentStream = undefined as any;
-		streamStats = undefined as any;
 	};
 
 	const fetchStreamStats = async (stream: Stream & { segments: Segment[] }) => {
@@ -38,32 +37,16 @@
 		currentStream = stream;
 	};
 
-	const switchTheme = () => {
-		if (theme === 'light') {
-			theme = 'dark';
-		} else {
-			theme = 'light';
-		}
+	const resetStreamStats = () => {
+		streamStatsPromise = undefined;
+		currentStream = undefined;
 	};
 </script>
-
-<div
-	id="dark-mode-toggle"
-	role="button"
-	tabindex="0"
-	class:dark={theme === 'dark'}
-	on:click={switchTheme}
-	on:keypress={switchTheme}
->
-	<span class:theme-active={theme === 'dark'}>d</span>
-	|
-	<span class:theme-active={theme === 'light'}>l</span>
-</div>
 
 {#await streamersPromise}
 	<p>loading...</p>
 {:then streamers}
-	<div id="container" class:dark={theme === 'dark'}>
+	<div id="main-page">
 		{#if streamers.length > 1}
 			<div id="streamers">
 				{#each streamers as streamer, index}
@@ -91,14 +74,16 @@
 						on:click={() => fetchStreamStats(stream)}
 						on:keypress={() => fetchStreamStats(stream)}
 					>
-						<h1>
+						<h3>
 							{new Date(stream.start).toLocaleDateString('default', {
+								// day of the week
+								weekday: 'long',
 								day: 'numeric',
 								month: 'long',
 								year: 'numeric'
 							})}
-						</h1>
-						<div>
+						</h3>
+						<div class="game-names">
 							{#each stream.segments as segment}
 								<span class="game-name">
 									{segment.game}
@@ -108,15 +93,42 @@
 					</div>
 				{/each}
 			</div>
-			{#if currentStream}
-				<StreamStats {streamStatsPromise} vodId={currentStream.vodId ?? ''} />
+			{#if streamStatsPromise && currentStream}
+				<div id="stats">
+					<div
+						class="reset-button"
+						on:click={resetStreamStats}
+						on:keypress={resetStreamStats}
+						role="button"
+						tabindex="0"
+					>
+					</div>
+					<StreamStats
+						{streamStatsPromise}
+						vodId={currentStream.vodId ?? ''}
+						start={new Date(currentStream.start)}
+					/>
+				</div>
 			{/if}
-		</div>
-		<div id="donation">
-			If you would like to contribute to this tool's server costs, you can support me
-			<a href="https://www.ko-fi.com/coolseel">here</a>
 		</div>
 	</div>
 {:catch error}
 	<p>error: {error.message}</p>
 {/await}
+
+<style>
+	.reset-button {
+		position: absolute;
+		top: 1em;
+		left: -2em;
+		width: 2em;
+		height: 2em;
+		background-color: var(--bg-primary);
+		border: 1px solid var(--border-color);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		font-weight: bold;
+		cursor: pointer;
+	}
+</style>

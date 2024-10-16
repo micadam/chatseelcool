@@ -1,24 +1,12 @@
 <script lang="ts">
 	import { Category } from '$lib/stream';
+	import ClipButton from '$lib/ClipButton.svelte';
 	import type { StreamStatsObj } from '$lib/stream';
 
 	export let streamStatsPromise: Promise<StreamStatsObj>;
 	export let vodId: string;
+	export let start: Date;
 	let currentCategory: string | Category = 0;
-
-	const getTimeStr = (seconds: number) => {
-		let str = '';
-		if (seconds >= 3600) {
-			str += `${Math.floor(seconds / 3600)}h`;
-			seconds %= 3600;
-		}
-		if (seconds >= 60) {
-			str += `${Math.floor(seconds / 60)}m`;
-			seconds %= 60;
-		}
-		str += `${seconds}s`;
-		return str;
-	};
 
 	const setCurrentCategory = (n: string | Category) => {
 		currentCategory = n;
@@ -29,6 +17,12 @@
 			return n;
 		}
 		return Category[n];
+	};
+
+	const getUrlForSegment = (segment: any) => {
+		const segStart = new Date(segment.start)
+		const dateDiffSeconds = Math.floor((segStart.getTime() - start.getTime()) / 1000);
+		return `https://twitch.tv/videos/${vodId}?t=${dateDiffSeconds}s`;
 	};
 </script>
 
@@ -48,18 +42,31 @@
 				<label class:active={currentCategory == n} for={n.toString()}>{getCategory(n)}</label>
 			{/each}
 		</div>
-		<p>
-			Here are the top clips from this stream from the {getCategory(currentCategory)} category
-		</p>
-		<ol>
-			{#each streamStats.categoryStats[currentCategory].topClips as clip}
-				<li>
-					<a href="http://twitch.tv/videos/{vodId}?t={clip.secondsSinceStart}s">
-						Time: {getTimeStr(clip.secondsSinceStart)}, hits: {clip.numMessages}
-					</a>
-				</li>
+		{#if streamStats.categoryStats[currentCategory].topClips.length === 0}
+			<p>No clips found for this category</p>
+		{:else}
+			<p>
+				Here are the top clips from this stream from the {getCategory(currentCategory)} category
+			</p>
+			<div id="topClips">
+				{#each streamStats.categoryStats[currentCategory].topClips as clip}
+					<ClipButton {clip} {vodId} />
+				{/each}
+			</div>
+		{/if}
+		Here is the number of messages per game:
+		{#each Object.entries(streamStats.messagesPerGame) as [game, count]}
+			<p>{game}: {count}</p>
+		{/each}
+
+		Here are some buttons for the start of each segment:
+		<ul>
+			{#each streamStats.segments as segment}
+				<li><a
+					href={getUrlForSegment(segment)} target="_blank">{segment.game}</a
+				></li>
 			{/each}
-		</ol>
+		</ul>
 	{:catch error}
 		<p>{error.message}</p>
 	{/await}

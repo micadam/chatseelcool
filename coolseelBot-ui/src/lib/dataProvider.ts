@@ -1,20 +1,13 @@
 import { PrismaClient, type Stream, type Streamer } from '@prisma/client';
-import { Category, type CategoryStats } from './stream';
+import * as dotenv from 'dotenv';
+import { Category, KEYWORDS_PER_CATEGORY, type CategoryStats } from './stream';
+
+dotenv.config();
 
 const CLIP_DURATION = 20;
 const CLIP_OFFSET = 10;
 
-const KEYWORDS_PER_CATEGORY = {
-	[Category.ALL]: [''],
-	[Category.POG]: ['Pog', 'POGGERS', 'PogChamp', 'LETSGO', 'POGCRAZY'],
-	[Category.LAUGH]: ['LUL', 'ICANT', 'KEKW'],
-	[Category.SCARY]: ['monkaS'],
-	[Category.SHOCK]: ['Cereal'],
-	// [Category.HORNY]: ['COCKA'],
-	[Category.MUSIC]: ['Jupijej', 'VIBE', 'DinoDance', 'ratJAM'],
-	[Category.GOOD_BIT]: ['+2'],
-	[Category.BAD_BIT]: ['-2']
-};
+
 
 function escapeRegExp(str: string) {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -30,11 +23,35 @@ const CATEGORY_TO_REGEX = Object.entries(KEYWORDS_PER_CATEGORY).reduce(
 	{} as Record<Category, RegExp>
 );
 
-export const CLIENT_INSTANCE = new PrismaClient();
+console.log('DB URL: ', process.env.DATABASE_URL?.slice(0, 5));
+export const CLIENT_INSTANCE = new PrismaClient({
+	log: [
+		{
+			emit: 'event',
+			level: 'query'
+		}
+	]
+});
+
+CLIENT_INSTANCE.$on('query', (e) => {
+	if (e.duration < 2000) {
+		return;
+	}
+	console.log('Long query');
+	console.log('Query: ' + e.query);
+	console.log('Params: ' + e.params);
+	console.log('Duration: ' + e.duration + 'ms');
+});
 
 export class PrismaDataProvider {
-	async getStreamers() {
-		return await CLIENT_INSTANCE.streamer.findMany();
+	async getStreamers(filter?: string) {
+		return await CLIENT_INSTANCE.streamer.findMany({
+			where: {
+				name: {
+					contains: filter
+				}
+			}
+		});
 	}
 
 	async getDataForStreamer(streamer: Streamer) {
@@ -54,10 +71,18 @@ export class PrismaDataProvider {
 	}
 
 	async getStreamStats(stream: Stream) {
+		const time = new Date().getTime();
+		// Select text, messagesSinceStart, and segemnt.game for messages in the current stream
+		const a = new Date().getTime();
 		const messages = await CLIENT_INSTANCE.message.findMany({
 			select: {
 				text: true,
-				secondsSinceStart: true
+				secondsSinceStart: true,
+				segment: {
+					select: {
+						game: true
+					}
+				}
 			},
 			where: {
 				segment: {
@@ -66,8 +91,9 @@ export class PrismaDataProvider {
 						live: true
 					}
 				}
-			}
+			},
 		});
+		console.log(`Query time: ${new Date().getTime() - a}ms`);
 
 		const categoryStats = new Map<Category, CategoryStats>();
 		const categoryStatsPromises = Object.entries(CATEGORY_TO_REGEX).map(async ([cat, regex]) => {
@@ -105,8 +131,28 @@ export class PrismaDataProvider {
 		});
 		await Promise.all(categoryStatsPromises);
 
+		const messagesPerGame = Array.from(
+			messages.reduce((map, message) => {
+				const game = message.segment.game;
+				if (game) {
+					map.set(game, (map.get(game) || 0) + 1);
+				}
+				return map;
+			}, new Map<string, number>())
+		).sort(([_, count1], [__, count2]) => count2 - count1);
+
+		const segments = await CLIENT_INSTANCE.segment.findMany({
+			where: {
+				streamId: stream.id
+			}
+		});
+
+		console.log(`Time taken: ${new Date().getTime() - time}ms`);
+
 		return {
-			categoryStats: categoryStats
+			categoryStats: categoryStats,
+			messagesPerGame,
+			segments
 		};
 	}
 }

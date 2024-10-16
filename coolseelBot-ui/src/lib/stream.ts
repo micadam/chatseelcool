@@ -1,49 +1,28 @@
-interface Streamer {
-	name: string;
-	streams: Stream[];
-}
-
-export interface StreamerWithMessages extends Streamer {
-	streams: StreamWithMessages[];
-}
-
-export interface Stream {
-	id: string;
-	start: Date;
-	segments: StreamSegment[];
-	live: boolean;
-}
-
-interface StreamSegment {
-	start: Date;
-	game: string;
-}
-
-interface StreamWithMessages extends Stream {
-	segments: StreamSegmentWithMessages[];
-}
-
-interface StreamSegmentWithMessages extends StreamSegment {
-	messages: Message[];
-}
-
-interface Message {
-	username: string;
-	text: string;
-	secondsSinceStart: number;
-}
-
 export enum Category {
 	ALL,
 	POG,
 	LAUGH,
 	SCARY,
 	SHOCK,
-	// HORNY,
+	HUH,
 	MUSIC,
+	CINEMA,
 	GOOD_BIT,
 	BAD_BIT
 }
+
+export const KEYWORDS_PER_CATEGORY = {
+	[Category.ALL]: [''],
+	[Category.POG]: ['Pog', 'POGGERS', 'PogChamp', 'LETSGO', 'POGCRAZY'],
+	[Category.LAUGH]: ['LUL', 'ICANT', 'KEKW'],
+	[Category.SCARY]: ['monkaS'],
+	[Category.SHOCK]: ['Cereal'],
+	[Category.HUH]: ['HUHH'],
+	[Category.MUSIC]: ['Jupijej', 'VIBE', 'DinoDance', 'ratJAM'],
+	[Category.CINEMA]: ['Cinema', 'BINEMA', 'CINEMA'],
+	[Category.GOOD_BIT]: ['+2'],
+	[Category.BAD_BIT]: ['-2']
+};
 
 export interface StreamStats {
 	categoryStats: Map<Category, CategoryStats>;
@@ -53,6 +32,8 @@ export interface StreamStatsObj {
 	categoryStats: {
 		[category: string]: CategoryStats;
 	};
+	messagesPerGame: any;
+	segments: any;
 }
 
 export interface CategoryStats {
@@ -60,7 +41,7 @@ export interface CategoryStats {
 	messagesPerPeriod: number[];
 }
 
-interface Clip {
+export interface Clip {
 	secondsSinceStart: number;
 	numMessages: number;
 }
